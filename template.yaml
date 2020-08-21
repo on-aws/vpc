@@ -206,6 +206,20 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
       SubnetId: !Ref PrivateSubnetC
 
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${Tag} Security Group
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+        - Key: Name
+          Value: !Ref Tag
+
 Outputs:
   VPC:
     Value: !Ref VPC
@@ -215,3 +229,6 @@ Outputs:
 
   PrivateSubnets:
     Value: !Sub ${PrivateSubnetA},${PrivateSubnetB},${PrivateSubnetC}
+
+  SecurityGroup:
+    Value: !Ref SecurityGroup
