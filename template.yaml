@@ -4,14 +4,46 @@ Description:  >-
 
 Parameters:
   Tag:
-    Description: We tag all AWS resources for your convinience.
+    Description: We tag all AWS resources for your convenience.
     Type: String
+    
+  Mode:
+    Description: |
+      Use Nat Gateway for production.
+      Use Nat Instance for dev/test or small production.
+    Type: String
+    AllowedValues:
+      - "NatGateway"
+      - "NatInstance"
+    Default: "NatGateway"
+    
+Conditions:
+  UseNatGateway: !Equals [!Ref Mode, "NatGateway"]
+  UseNatInstance: !Equals [!Ref Mode, "NatInstance"]
+  
+Mappings: 
+  Configuration:
+    us-east-1:
+      Ami: ami-0d8b28f23a8c6709e
+    eu-west-1:
+      Ami: ami-06558a91dd7f36ac2
+    Spot:
+      InstanceType: t3a.micro
+      MaxPrice: 0.01
+    CidrBlock: 
+      VPC: 10.192.0.0/16
+      PublicSubnetA: 10.192.0.0/20
+      PublicSubnetB: 10.192.16.0/20
+      PublicSubnetC: 10.192.32.0/20
+      PrivateSubnetA: 10.192.48.0/20
+      PrivateSubnetB: 10.192.64.0/20
+      PrivateSubnetC: 10.192.80.0/20
 
 Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 10.192.0.0/16
+      CidrBlock: !FindInMap [Configuration, CidrBlock, VPC]
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
@@ -20,6 +52,9 @@ Resources:
         - Key: Name
           Value: !Ref Tag
 
+  ##########################################################################################
+  # Public Subnets
+  ##########################################################################################
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -40,101 +75,37 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: 10.192.10.0/24
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetA]
       Tags:
         - Key: App
           Value: !Ref Tag
         - Key: Name
-          Value: !Sub ${Tag}/public/A
+          Value: PublicSubnetA
 
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: 10.192.20.0/24
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetB]
       Tags:
         - Key: App
           Value: !Ref Tag
         - Key: Name
-          Value: !Sub ${Tag}/public/B
+          Value: PublicSubnetB
 
   PublicSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 2, !GetAZs '' ]
-      CidrBlock: 10.192.30.0/24
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetC]
       Tags:
         - Key: App
           Value: !Ref Tag
         - Key: Name
-          Value: !Sub ${Tag}/public/C
-
-  PrivateSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
-      CidrBlock: 10.192.40.0/24
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Sub ${Tag}/private/A
-
-  PrivateSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
-      CidrBlock: 10.192.50.0/24
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Sub ${Tag}/private/B
-
-  PrivateSubnetC:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 2, !GetAZs  '' ]
-      CidrBlock: 10.192.60.0/24
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Sub ${Tag}/private/C
-
-  EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Ref Tag
-
-  # Important: We are sharing single NAT gateway accross all provate subnets to reduce costs
-  # https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html
-  # Note: If you have resources in multiple Availability Zones and they share one NAT gateway, and if the NAT gateway’s Availability Zone is down,
-  # resources in the other Availability Zones lose internet access.
-  # To create an Availability Zone-independent architecture,
-  # create a NAT gateway in each Availability Zone and configure your routing to ensure that resources use the NAT gateway in the same Availability Zone.
-  NAT:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt EIP.AllocationId
-      SubnetId: !Ref PublicSubnetA
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Ref Tag
-
+          Value: PublicSubnetC
+          
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -143,7 +114,7 @@ Resources:
         - Key: App
           Value: !Ref Tag
         - Key: Name
-          Value: !Sub ${Tag}/public
+          Value: Public
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -170,7 +141,172 @@ Resources:
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetC
+      
+  ################################################################################
+  # NAT Gateway or NAT Instance
+  # We are sharing single NAT across all provided subnets to reduce costs
+  ################################################################################
+  NatSecurityGroup:
+    Condition: UseNatInstance
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Group for NAT Instance
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+          
+  InstanceRole:
+    Condition: UseNatInstance
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Effect: Allow
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        
+  InstanceProfile:
+    Condition: UseNatInstance
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref InstanceRole
+        
+  LaunchTemplate:
+    Condition: UseNatInstance
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !FindInMap [Configuration, !Ref AWS::Region, Ami]
+        InstanceType: !FindInMap [Configuration, Spot, InstanceType]
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        InstanceMarketOptions:
+          MarketType: spot
+          SpotOptions:
+            MaxPrice: !FindInMap [Configuration, Spot, MaxPrice]
+            
+  NatInstance:
+    Condition: UseNatInstance
+    Type: AWS::EC2::Instance
+    Properties:
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          GroupSet:
+            - !Ref NatSecurityGroup
+          SubnetId: !Ref PublicSubnetA
+      SourceDestCheck: false
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: 1
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+        - Key: Name
+          Value: NAT
+          
+  EIP:
+    Condition: UseNatGateway
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: App
+          Value: !Ref Tag
 
+  NatGateway:
+    Condition: UseNatGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIP.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+
+  ########################################################################################
+  # Private Subnets ########################################################################################
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+        - Key: Name
+          Value: PrivateSubnetA
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+        - Key: Name
+          Value: PrivateSubnetB
+          
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
+      Tags:
+        - Key: App
+          Value: !Ref Tag
+        - Key: Name
+          Value: PrivateSubnetC
+          
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -179,14 +315,21 @@ Resources:
         - Key: App
           Value: !Ref Tag
         - Key: Name
-          Value: !Sub ${Tag}/private
+          Value: Private
 
   PrivateRoute:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NAT
+      NatGatewayId: !If
+        - UseNatGateway
+        - !Ref NatGateway
+        - !Ref AWS::NoValue
+      InstanceId: !If
+        - UseNatInstance
+        - !Ref NatInstance
+        - !Ref AWS::NoValue
 
   PrivateSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -199,27 +342,12 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTable
       SubnetId: !Ref PrivateSubnetB
-
+      
   PrivateSubnetCRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PrivateRouteTable
       SubnetId: !Ref PrivateSubnetC
-
-  SecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: !Sub ${Tag} Security Group
-      VpcId:
-        Ref: VPC
-      SecurityGroupIngress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: App
-          Value: !Ref Tag
-        - Key: Name
-          Value: !Ref Tag
 
 Outputs:
   VPC:
@@ -230,6 +358,3 @@ Outputs:
 
   PrivateSubnets:
     Value: !Sub ${PrivateSubnetA},${PrivateSubnetB},${PrivateSubnetC}
-
-  SecurityGroup:
-    Value: !Ref SecurityGroup
