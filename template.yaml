@@ -523,6 +523,9 @@ Outputs:
   VPC:
     Value: !Ref VPC
 
+  NatSecurityGroup:
+    Value: !Ref NatSecurityGroup
+
   PublicSubnets:
     Value:
       Fn::If:
