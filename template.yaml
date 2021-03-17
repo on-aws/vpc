@@ -1,8 +1,19 @@
 Description: VPC for On-AWS deployment.
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Optional tags. The metadata that you apply to the resources.
+        Parameters:
+          - App
+          - Owner
+
 Parameters:
-  Tag:
-    Description: We tag all AWS resources for your convenience.
+  App:
+    Type: String
+
+  Owner:
     Type: String
 
   AvailabilityZonesCount:
@@ -18,6 +29,12 @@ Conditions:
       - Fn::Equals: [!Ref AvailabilityZonesCount, 3]
   ThirdZone:
     Fn::Equals: [!Ref AvailabilityZonesCount, 3]
+  AssignApp:
+    Fn::Not:
+      - Fn::Equals: [ !Ref App, "" ]
+  AssignOwner:
+    Fn::Not:
+      - Fn::Equals: [ !Ref Owner, "" ]
 
 Mappings:
   Configuration:
@@ -49,8 +66,21 @@ Resources:
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
-        - Key: Name
-          Value: !Ref Tag
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignApp
+          - Key: Name
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
 
   ##########################################################################################
   # Public Subnets
@@ -59,8 +89,21 @@ Resources:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
-        - Key: Name
-          Value: !Ref Tag
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignApp
+          - Key: Name
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -75,6 +118,16 @@ Resources:
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetA]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetA
 
@@ -86,6 +139,16 @@ Resources:
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetB]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetB
 
@@ -97,6 +160,16 @@ Resources:
       AvailabilityZone: !Select [ 2, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetC]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetC
 
@@ -105,6 +178,16 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: Public
 
@@ -146,6 +229,16 @@ Resources:
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetA
 
@@ -157,6 +250,16 @@ Resources:
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetB
 
@@ -168,6 +271,16 @@ Resources:
       AvailabilityZone: !Select [ 2, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetC
 
@@ -176,6 +289,16 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateA
 
@@ -185,6 +308,16 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateB
 
@@ -194,6 +327,16 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateC
 
@@ -272,6 +415,16 @@ Resources:
             CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
           - !Ref AWS::NoValue
       Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
         - Key: Name
           Value: NAT
 
@@ -297,7 +450,6 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - ec2:CreateTags
                   - ec2:ModifyInstanceAttribute
                 Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
               - Effect: Allow
@@ -340,6 +492,23 @@ Resources:
             AssociatePublicIpAddress: true
             Groups:
               - !Ref NatSecurityGroup
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Fn::If:
+                - AssignApp
+                - Key: App
+                  Value: !Ref App
+                - !Ref AWS::NoValue
+              - Fn::If:
+                - AssignOwner
+                - Key: Owner
+                  Value: !Ref Owner
+                - !Ref AWS::NoValue
+              - Key: Name
+                Value: on-aws-nat
+              - Key: Role
+                Value: nat
         UserData:
           Fn::Base64:
             Fn::Sub: |
@@ -357,12 +526,7 @@ Resources:
                 aws ec2 modify-instance-attribute --region ${AWS::Region} \
                   --instance-id $instance \
                   --no-source-dest-check
-            02_tag_resources:
-              command: !Sub |
-                aws ec2 create-tags --region ${AWS::Region} \
-                  --resources $instance \
-                  --tags Key=Name,Value=${Tag}-nat Key=Role,Value=nat
-            03_replace_route_in_table_a:
+            02_replace_route_in_table_a:
               command: !Sub |
                 if [[ $az == '${PrivateSubnetA.AvailabilityZone}' ]]
                 then
@@ -386,7 +550,7 @@ Resources:
                     fi
                   fi
                 fi
-            04_replace_route_in_table_b:
+            03_replace_route_in_table_b:
               command:
                 Fn::If:
                   - SecondZone
@@ -414,7 +578,7 @@ Resources:
                       fi
                     fi
                   - echo 'SKIP'
-            05_replace_route_in_table_c:
+            04_replace_route_in_table_c:
               command:
                 Fn::If:
                   - ThirdZone
