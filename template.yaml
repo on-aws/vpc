@@ -54,6 +54,8 @@ Mappings:
       PrivateSubnetA: 10.192.48.0/20
       PrivateSubnetB: 10.192.64.0/20
       PrivateSubnetC: 10.192.80.0/20
+    Logs:
+      RetentionInDays: 30
 
 Resources:
   ##########################################################################################
@@ -359,6 +361,247 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTableC
       SubnetId: !Ref PrivateSubnetC
+
+  ################################################################################
+  # VPC Flow Logs
+  ################################################################################
+  LogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - vpc-flow-logs.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: !Sub ${AWS::StackName}-vpc-flow-log
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: '*'
+
+  LogGroupPublicAccept:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/public/accept
+      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
+
+  LogGroupPublicReject:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/public/reject
+      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
+
+  LogGroupPrivateAccept:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/private/accept
+      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
+
+  LogGroupPrivateReject:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/private/reject
+      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
+
+  PublicSubnetAFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPublicAccept
+      ResourceId: !Ref PublicSubnetA
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PublicSubnetBFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Condition: SecondZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPublicAccept
+      ResourceId: !Ref PublicSubnetB
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PublicSubnetCFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Condition: ThirdZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPublicAccept
+      ResourceId: !Ref PublicSubnetC
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetAFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateAccept
+      ResourceId: !Ref PrivateSubnetA
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetBFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Condition: SecondZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateAccept
+      ResourceId: !Ref PrivateSubnetB
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetCFlowLogAccept:
+    Type: AWS::EC2::FlowLog
+    Condition: ThirdZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateAccept
+      ResourceId: !Ref PrivateSubnetC
+      ResourceType: Subnet
+      TrafficType: ACCEPT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetAFlowLogReject:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateReject
+      ResourceId: !Ref PrivateSubnetA
+      ResourceType: Subnet
+      TrafficType: REJECT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetBFlowLogReject:
+    Type: AWS::EC2::FlowLog
+    Condition: SecondZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateReject
+      ResourceId: !Ref PrivateSubnetB
+      ResourceType: Subnet
+      TrafficType: REJECT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
+
+  PrivateSubnetCFlowLogReject:
+    Type: AWS::EC2::FlowLog
+    Condition: ThirdZone
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroupPrivateReject
+      ResourceId: !Ref PrivateSubnetC
+      ResourceType: Subnet
+      TrafficType: REJECT
+      Tags:
+        - Fn::If:
+          - AssignApp
+          - Key: App
+            Value: !Ref App
+          - !Ref AWS::NoValue
+        - Fn::If:
+          - AssignOwner
+          - Key: Owner
+            Value: !Ref Owner
+          - !Ref AWS::NoValue
 
   ################################################################################
   # NAT Security
