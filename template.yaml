@@ -39,11 +39,13 @@ Conditions:
 Mappings:
   Configuration:
     us-east-1:
-      Ami: ami-0c09e99c7d9bb3ec3
+      Ami: ami-0822796fd7b3ba710
+    us-west-2:
+      Ami: ami-0889d9089a8b74971
     ca-central-1:
-      Ami: ami-0263e201b916f6cad
+      Ami: ami-07d28adadef668265
     eu-west-1:
-      Ami: ami-03581a4bc9c44cdd3
+      Ami: ami-097ef3ce5c40814f2
     Spot:
       MaxPrice: 0.003
     CidrBlock:
