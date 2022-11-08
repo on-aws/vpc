@@ -1,21 +1,6 @@
 Description: VPC for On-AWS deployment.
 
-Metadata:
-  AWS::CloudFormation::Interface:
-    ParameterGroups:
-      - Label:
-          default: Optional tags. The metadata that you apply to the resources.
-        Parameters:
-          - App
-          - Owner
-
 Parameters:
-  App:
-    Type: String
-
-  Owner:
-    Type: String
-
   AvailabilityZonesCount:
     Description: Number of availability zones to span.
     Default: 2
@@ -29,12 +14,6 @@ Conditions:
       - Fn::Equals: [!Ref AvailabilityZonesCount, 3]
   ThirdZone:
     Fn::Equals: [!Ref AvailabilityZonesCount, 3]
-  AssignApp:
-    Fn::Not:
-      - Fn::Equals: [ !Ref App, "" ]
-  AssignOwner:
-    Fn::Not:
-      - Fn::Equals: [ !Ref Owner, "" ]
 
 Mappings:
   Configuration:
@@ -43,7 +22,7 @@ Mappings:
     us-west-2:
       Ami: ami-0889d9089a8b74971
     ca-central-1:
-      Ami: ami-07d28adadef668265
+      Ami: ami-03cde0712fd4682b5
     eu-west-1:
       Ami: ami-097ef3ce5c40814f2
     Spot:
@@ -69,45 +48,12 @@ Resources:
       CidrBlock: !FindInMap [Configuration, CidrBlock, VPC]
       EnableDnsSupport: true
       EnableDnsHostnames: true
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignApp
-          - Key: Name
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   ##########################################################################################
   # Public Subnets
   ##########################################################################################
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignApp
-          - Key: Name
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -122,16 +68,6 @@ Resources:
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetA]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetA
 
@@ -143,16 +79,6 @@ Resources:
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetB]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetB
 
@@ -164,16 +90,6 @@ Resources:
       AvailabilityZone: !Select [ 2, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetC]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PublicSubnetC
 
@@ -182,16 +98,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: Public
 
@@ -233,16 +139,6 @@ Resources:
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetA
 
@@ -254,16 +150,6 @@ Resources:
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetB
 
@@ -275,16 +161,6 @@ Resources:
       AvailabilityZone: !Select [ 2, !GetAZs '' ]
       CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateSubnetC
 
@@ -293,16 +169,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateA
 
@@ -312,16 +178,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateB
 
@@ -331,16 +187,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: PrivateC
 
@@ -427,17 +273,6 @@ Resources:
       ResourceId: !Ref PublicSubnetA
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PublicSubnetBFlowLogAccept:
     Type: AWS::EC2::FlowLog
@@ -448,17 +283,6 @@ Resources:
       ResourceId: !Ref PublicSubnetB
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PublicSubnetCFlowLogAccept:
     Type: AWS::EC2::FlowLog
@@ -469,17 +293,6 @@ Resources:
       ResourceId: !Ref PublicSubnetC
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetAFlowLogAccept:
     Type: AWS::EC2::FlowLog
@@ -489,17 +302,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetA
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetBFlowLogAccept:
     Type: AWS::EC2::FlowLog
@@ -510,17 +312,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetB
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetCFlowLogAccept:
     Type: AWS::EC2::FlowLog
@@ -531,17 +322,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetC
       ResourceType: Subnet
       TrafficType: ACCEPT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetAFlowLogReject:
     Type: AWS::EC2::FlowLog
@@ -551,17 +331,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetA
       ResourceType: Subnet
       TrafficType: REJECT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetBFlowLogReject:
     Type: AWS::EC2::FlowLog
@@ -572,17 +341,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetB
       ResourceType: Subnet
       TrafficType: REJECT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   PrivateSubnetCFlowLogReject:
     Type: AWS::EC2::FlowLog
@@ -593,17 +351,6 @@ Resources:
       ResourceId: !Ref PrivateSubnetC
       ResourceType: Subnet
       TrafficType: REJECT
-      Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
 
   ################################################################################
   # NAT Security
@@ -660,16 +407,6 @@ Resources:
             CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
           - !Ref AWS::NoValue
       Tags:
-        - Fn::If:
-          - AssignApp
-          - Key: App
-            Value: !Ref App
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - AssignOwner
-          - Key: Owner
-            Value: !Ref Owner
-          - !Ref AWS::NoValue
         - Key: Name
           Value: NAT
 
@@ -740,16 +477,6 @@ Resources:
         TagSpecifications:
           - ResourceType: instance
             Tags:
-              - Fn::If:
-                - AssignApp
-                - Key: App
-                  Value: !Ref App
-                - !Ref AWS::NoValue
-              - Fn::If:
-                - AssignOwner
-                - Key: Owner
-                  Value: !Ref Owner
-                - !Ref AWS::NoValue
               - Key: Name
                 Value: on-aws-nat
               - Key: Role
