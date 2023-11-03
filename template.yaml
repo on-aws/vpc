@@ -1,19 +1,5 @@
+Transform: AWS::LanguageExtensions
 Description: VPC for On-AWS deployment.
-
-Parameters:
-  AvailabilityZonesCount:
-    Description: Number of availability zones to span.
-    Default: 2
-    Type: Number
-    AllowedValues: [ 1, 2, 3 ]
-
-Conditions:
-  SecondZone:
-    Fn::Or:
-      - Fn::Equals: [!Ref AvailabilityZonesCount, 2]
-      - Fn::Equals: [!Ref AvailabilityZonesCount, 3]
-  ThirdZone:
-    Fn::Equals: [!Ref AvailabilityZonesCount, 3]
 
 Mappings:
   Configuration:
@@ -22,36 +8,77 @@ Mappings:
     us-west-2:
       Ami: ami-0889d9089a8b74971
     ca-central-1:
-      Ami: ami-03cde0712fd4682b5
+      Ami: ami-0f1779932de794f63
     eu-west-1:
       Ami: ami-097ef3ce5c40814f2
     Spot:
       MaxPrice: 0.003
-    CidrBlock:
-      VPC: 10.192.0.0/16
-      PublicSubnetA: 10.192.0.0/20
-      PublicSubnetB: 10.192.16.0/20
-      PublicSubnetC: 10.192.32.0/20
-      PrivateSubnetA: 10.192.48.0/20
-      PrivateSubnetB: 10.192.64.0/20
-      PrivateSubnetC: 10.192.80.0/20
+    VPC:
+      CidrBlock: 10.192.0.0/16
+    PublicSubnet:
+      A: 10.192.0.0/20
+      B: 10.192.16.0/20
+      C: 10.192.32.0/20
+    PrivateSubnet:
+      A: 10.192.48.0/20
+      B: 10.192.64.0/20
+      C: 10.192.80.0/20
+    AZ:
+      A: 0
+      B: 1
+      C: 2
     Logs:
       RetentionInDays: 30
 
 Resources:
-  ##########################################################################################
-  # VPC
-  ##########################################################################################
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !FindInMap [Configuration, CidrBlock, VPC]
+      CidrBlock: !FindInMap [Configuration, VPC, CidrBlock]
       EnableDnsSupport: true
       EnableDnsHostnames: true
 
-  ##########################################################################################
-  # Public Subnets
-  ##########################################################################################
+  LogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - vpc-flow-logs.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-vpc-flow-log
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: '*'
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /on-aws/vpc/log/${VPC}
+      RetentionInDays: !FindInMap [ Configuration, Logs, RetentionInDays ]
+
+  FlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
+      LogGroupName: !Ref LogGroup
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      TrafficType: ALL
+
   InternetGateway:
     Type: AWS::EC2::InternetGateway
 
@@ -60,38 +87,6 @@ Resources:
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
-
-  PublicSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetA]
-      Tags:
-        - Key: Name
-          Value: PublicSubnetA
-
-  PublicSubnetB:
-    Type: AWS::EC2::Subnet
-    Condition: SecondZone
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetB]
-      Tags:
-        - Key: Name
-          Value: PublicSubnetB
-
-  PublicSubnetC:
-    Type: AWS::EC2::Subnet
-    Condition: ThirdZone
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 2, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PublicSubnetC]
-      Tags:
-        - Key: Name
-          Value: PublicSubnetC
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -109,252 +104,57 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  PublicSubnetARouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetA
+  Fn::ForEach::Subnet:
+    - Letter
+    - [ A, B, C ]
+    - PublicSubnet${Letter}:
+        Type: AWS::EC2::Subnet
+        Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select
+            - !FindInMap [Configuration, AZ, !Ref Letter]
+            - !GetAZs
+          CidrBlock: !FindInMap [Configuration, PublicSubnet, !Ref Letter]
+          Tags:
+            - Key: Name
+              Value: PublicSubnet${Letter}
 
-  PublicSubnetBRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: SecondZone
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetB
+      PublicSubnet${Letter}RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+          RouteTableId: !Ref
+            Fn::Sub: PublicRouteTable
+          SubnetId: !Ref
+            Fn::Sub: PublicSubnet${Letter}
 
-  PublicSubnetCRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: ThirdZone
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetC
+      PrivateRouteTable${Letter}:
+        Type: AWS::EC2::RouteTable
+        Properties:
+          VpcId: !Ref VPC
+          Tags:
+            - Key: Name
+              Value: Private${Letter}
 
-  ########################################################################################
-  # Private Subnets
-  ########################################################################################
-  PrivateSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
-      Tags:
-        - Key: Name
-          Value: PrivateSubnetA
+      PrivateSubnet${Letter}:
+        Type: AWS::EC2::Subnet
+        Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select
+            - !FindInMap [ Configuration, AZ, !Ref Letter ]
+            - !GetAZs
+          CidrBlock: !FindInMap [ Configuration, PrivateSubnet, !Ref Letter ]
+          Tags:
+            - Key: Name
+              Value: PrivateSubnet${Letter}
 
-  PrivateSubnetB:
-    Type: AWS::EC2::Subnet
-    Condition: SecondZone
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
-      Tags:
-        - Key: Name
-          Value: PrivateSubnetB
+      PrivateSubnet${Letter}RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+          RouteTableId: !Ref
+            Fn::Sub: PrivateRouteTable${Letter}
+          SubnetId: !Ref
+            Fn::Sub: PrivateSubnet${Letter}
 
-  PrivateSubnetC:
-    Type: AWS::EC2::Subnet
-    Condition: ThirdZone
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 2, !GetAZs '' ]
-      CidrBlock: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
-      Tags:
-        - Key: Name
-          Value: PrivateSubnetC
-
-  PrivateRouteTableA:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: PrivateA
-
-  PrivateRouteTableB:
-    Type: AWS::EC2::RouteTable
-    Condition: SecondZone
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: PrivateB
-
-  PrivateRouteTableC:
-    Type: AWS::EC2::RouteTable
-    Condition: ThirdZone
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: PrivateC
-
-  PrivateSubnetARouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTableA
-      SubnetId: !Ref PrivateSubnetA
-
-  PrivateSubnetBRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: SecondZone
-    Properties:
-      RouteTableId: !Ref PrivateRouteTableB
-      SubnetId: !Ref PrivateSubnetB
-
-  PrivateSubnetCRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: ThirdZone
-    Properties:
-      RouteTableId: !Ref PrivateRouteTableC
-      SubnetId: !Ref PrivateSubnetC
-
-  ################################################################################
-  # VPC Flow Logs
-  ################################################################################
-  LogRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          -
-            Effect: Allow
-            Principal:
-              Service:
-                - vpc-flow-logs.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: /
-      Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-vpc-flow-log
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - logs:DescribeLogGroups
-                  - logs:DescribeLogStreams
-                Resource: '*'
-
-  LogGroupPublicAccept:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/public/accept
-      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
-
-  LogGroupPublicReject:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/public/reject
-      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
-
-  LogGroupPrivateAccept:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/private/accept
-      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
-
-  LogGroupPrivateReject:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /on-aws/vpc/log/${VPC}/private/reject
-      RetentionInDays: !FindInMap [Configuration, Logs, RetentionInDays]
-
-  PublicSubnetAFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPublicAccept
-      ResourceId: !Ref PublicSubnetA
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PublicSubnetBFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Condition: SecondZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPublicAccept
-      ResourceId: !Ref PublicSubnetB
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PublicSubnetCFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Condition: ThirdZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPublicAccept
-      ResourceId: !Ref PublicSubnetC
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PrivateSubnetAFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateAccept
-      ResourceId: !Ref PrivateSubnetA
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PrivateSubnetBFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Condition: SecondZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateAccept
-      ResourceId: !Ref PrivateSubnetB
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PrivateSubnetCFlowLogAccept:
-    Type: AWS::EC2::FlowLog
-    Condition: ThirdZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateAccept
-      ResourceId: !Ref PrivateSubnetC
-      ResourceType: Subnet
-      TrafficType: ACCEPT
-
-  PrivateSubnetAFlowLogReject:
-    Type: AWS::EC2::FlowLog
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateReject
-      ResourceId: !Ref PrivateSubnetA
-      ResourceType: Subnet
-      TrafficType: REJECT
-
-  PrivateSubnetBFlowLogReject:
-    Type: AWS::EC2::FlowLog
-    Condition: SecondZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateReject
-      ResourceId: !Ref PrivateSubnetB
-      ResourceType: Subnet
-      TrafficType: REJECT
-
-  PrivateSubnetCFlowLogReject:
-    Type: AWS::EC2::FlowLog
-    Condition: ThirdZone
-    Properties:
-      DeliverLogsPermissionArn: !GetAtt LogRole.Arn
-      LogGroupName: !Ref LogGroupPrivateReject
-      ResourceId: !Ref PrivateSubnetC
-      ResourceType: Subnet
-      TrafficType: REJECT
-
-  ################################################################################
-  # NAT Security
-  ################################################################################
   NatSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -371,41 +171,17 @@ Resources:
           CidrIp: 0.0.0.0/0
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
-        - Fn::If:
-          - SecondZone
-          - IpProtocol: tcp
-            FromPort: 80
-            ToPort: 80
-            CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - ThirdZone
-          - IpProtocol: tcp
-            FromPort: 80
-            ToPort: 80
-            CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
-          - !Ref AWS::NoValue
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !FindInMap [ Configuration, PrivateSubnet, A ]
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetA]
-        - Fn::If:
-          - SecondZone
-          - IpProtocol: tcp
-            FromPort: 443
-            ToPort: 443
-            CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetB]
-          - !Ref AWS::NoValue
-        - Fn::If:
-          - ThirdZone
-          - IpProtocol: tcp
-            FromPort: 443
-            ToPort: 443
-            CidrIp: !FindInMap [Configuration, CidrBlock, PrivateSubnetC]
-          - !Ref AWS::NoValue
+          CidrIp: !FindInMap [ Configuration, PrivateSubnet, B ]
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !FindInMap [ Configuration, PrivateSubnet, C ]
       Tags:
         - Key: Name
           Value: NAT
@@ -440,14 +216,8 @@ Resources:
                   - ec2:ReplaceRoute
                 Resource:
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableA}
-                  - Fn::If:
-                    - SecondZone
-                    - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableB}
-                    - !Ref AWS::NoValue
-                  - Fn::If:
-                    - ThirdZone
-                    - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableC}
-                    - !Ref AWS::NoValue
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableB}
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableC}
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -456,9 +226,33 @@ Resources:
       Roles:
         - !Ref InstanceRole
 
-  ################################################################################
-  # NAT Instances
-  ################################################################################
+  Fn::ForEach::Instance:
+    - Letter
+    - [ A, B, C ]
+    - NatInstanceSpotFleet${Letter}:
+        Type: AWS::EC2::SpotFleet
+        DependsOn: !Sub PrivateRouteTable${Letter}
+        Properties:
+          SpotFleetRequestConfigData:
+            IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role
+            SpotPrice: !FindInMap [ Configuration, Spot, MaxPrice ]
+            TargetCapacity: 1
+            LaunchTemplateConfigs:
+              - LaunchTemplateSpecification:
+                  LaunchTemplateId: !Ref LaunchTemplate
+                  Version: !GetAtt LaunchTemplate.LatestVersionNumber
+                Overrides:
+                  - InstanceType: t3a.nano
+                    SubnetId: !Ref
+                      Fn::Sub: PublicSubnet${Letter}
+              - LaunchTemplateSpecification:
+                  LaunchTemplateId: !Ref LaunchTemplate
+                  Version: !GetAtt LaunchTemplate.LatestVersionNumber
+                Overrides:
+                  - InstanceType: t3.nano
+                    SubnetId: !Ref
+                      Fn::Sub: PublicSubnet${Letter}
+
   UserDataHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
 
@@ -479,8 +273,6 @@ Resources:
             Tags:
               - Key: Name
                 Value: on-aws-nat
-              - Key: Role
-                Value: nat
         UserData:
           Fn::Base64:
             Fn::Sub: |
@@ -523,129 +315,53 @@ Resources:
                   fi
                 fi
             03_replace_route_in_table_b:
-              command:
-                Fn::If:
-                  - SecondZone
-                  - !Sub |
-                    if [[ $az == '${PrivateSubnetB.AvailabilityZone}' ]]
+              command: !Sub |
+                if [[ $az == '${PrivateSubnetB.AvailabilityZone}' ]]
+                then
+                  aws ec2 create-route --region ${AWS::Region} \
+                    --route-table-id ${PrivateRouteTableB} \
+                    --instance-id $instance \
+                    --destination-cidr-block 0.0.0.0/0
+                  if [ $? -eq 0 ]
+                  then
+                    echo 'OK (route created)'
+                  else
+                    aws ec2 replace-route --region ${AWS::Region} \
+                      --route-table-id ${PrivateRouteTableB} \
+                      --instance-id $instance \
+                      --destination-cidr-block 0.0.0.0/0
+                    if [ $? -eq 0 ]
                     then
-                      aws ec2 create-route --region ${AWS::Region} \
-                        --route-table-id ${PrivateRouteTableB} \
-                        --instance-id $instance \
-                        --destination-cidr-block 0.0.0.0/0
-                      if [ $? -eq 0 ]
-                      then
-                        echo 'OK (route created)'
-                      else
-                        aws ec2 replace-route --region ${AWS::Region} \
-                          --route-table-id ${PrivateRouteTableB} \
-                          --instance-id $instance \
-                          --destination-cidr-block 0.0.0.0/0
-                        if [ $? -eq 0 ]
-                        then
-                          echo 'OK (route replaced)'
-                        else
-                          echo 'FAIL'
-                        fi
-                      fi
+                      echo 'OK (route replaced)'
+                    else
+                      echo 'FAIL'
                     fi
-                  - echo 'SKIP'
+                  fi
+                fi
             04_replace_route_in_table_c:
-              command:
-                Fn::If:
-                  - ThirdZone
-                  - !Sub |
-                    if [[ $az == '${PrivateSubnetC.AvailabilityZone}' ]]
+              command: !Sub |
+                if [[ $az == '${PrivateSubnetC.AvailabilityZone}' ]]
+                then
+                  aws ec2 create-route --region ${AWS::Region} \
+                    --route-table-id ${PrivateRouteTableC} \
+                    --instance-id $instance \
+                    --destination-cidr-block 0.0.0.0/0
+                  if [ $? -eq 0 ]
+                  then
+                    echo 'OK (route created)'
+                  else
+                    aws ec2 replace-route --region ${AWS::Region} \
+                      --route-table-id ${PrivateRouteTableC} \
+                      --instance-id $instance \
+                      --destination-cidr-block 0.0.0.0/0
+                    if [ $? -eq 0 ]
                     then
-                      aws ec2 create-route --region ${AWS::Region} \
-                        --route-table-id ${PrivateRouteTableC} \
-                        --instance-id $instance \
-                        --destination-cidr-block 0.0.0.0/0
-                      if [ $? -eq 0 ]
-                      then
-                        echo 'OK (route created)'
-                      else
-                        aws ec2 replace-route --region ${AWS::Region} \
-                          --route-table-id ${PrivateRouteTableC} \
-                          --instance-id $instance \
-                          --destination-cidr-block 0.0.0.0/0
-                        if [ $? -eq 0 ]
-                        then
-                          echo 'OK (route replaced)'
-                        else
-                          echo 'FAIL'
-                        fi
-                      fi
+                      echo 'OK (route replaced)'
+                    else
+                      echo 'FAIL'
                     fi
-                  - echo 'SKIP'
-
-  NatInstanceSpotFleetA:
-    Type: AWS::EC2::SpotFleet
-    DependsOn: PrivateRouteTableA
-    Properties:
-      SpotFleetRequestConfigData:
-        IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role
-        SpotPrice: !FindInMap [Configuration, Spot, MaxPrice]
-        TargetCapacity: 1
-        LaunchTemplateConfigs:
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3a.nano
-                SubnetId: !Ref PublicSubnetA
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3.nano
-                SubnetId: !Ref PublicSubnetA
-
-  NatInstanceSpotFleetB:
-    Type: AWS::EC2::SpotFleet
-    Condition: SecondZone
-    DependsOn: PrivateRouteTableB
-    Properties:
-      SpotFleetRequestConfigData:
-        IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role
-        SpotPrice: !FindInMap [Configuration, Spot, MaxPrice]
-        TargetCapacity: 1
-        LaunchTemplateConfigs:
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3a.nano
-                SubnetId: !Ref PublicSubnetB
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3.nano
-                SubnetId: !Ref PublicSubnetB
-
-  NatInstanceSpotFleetC:
-    Type: AWS::EC2::SpotFleet
-    Condition: ThirdZone
-    DependsOn: PrivateRouteTableC
-    Properties:
-      SpotFleetRequestConfigData:
-        IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role
-        SpotPrice: !FindInMap [Configuration, Spot, MaxPrice]
-        TargetCapacity: 1
-        LaunchTemplateConfigs:
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3a.nano
-                SubnetId: !Ref PublicSubnetC
-          - LaunchTemplateSpecification:
-              LaunchTemplateId: !Ref LaunchTemplate
-              Version: !GetAtt LaunchTemplate.LatestVersionNumber
-            Overrides:
-              - InstanceType: t3.nano
-                SubnetId: !Ref PublicSubnetC
+                  fi
+                fi
 
   WaitUserData:
     Type: AWS::CloudFormation::WaitCondition
@@ -653,7 +369,7 @@ Resources:
     Properties:
       Handle: !Ref UserDataHandle
       Timeout: 600
-      Count: !Ref AvailabilityZonesCount
+      Count: 3
 
 Outputs:
   VPC:
@@ -663,21 +379,7 @@ Outputs:
     Value: !Ref NatSecurityGroup
 
   PublicSubnets:
-    Value:
-      Fn::If:
-        - ThirdZone
-        - !Sub ${PublicSubnetA},${PublicSubnetB},${PublicSubnetC}
-        - Fn::If:
-          - SecondZone
-          - !Sub ${PublicSubnetA},${PublicSubnetB}
-          - !Ref PublicSubnetA
+    Value: !Sub ${PublicSubnetA},${PublicSubnetB},${PublicSubnetC}
 
   PrivateSubnets:
-    Value:
-      Fn::If:
-        - ThirdZone
-        - !Sub ${PrivateSubnetA},${PrivateSubnetB},${PrivateSubnetC}
-        - Fn::If:
-          - SecondZone
-          - !Sub ${PrivateSubnetA},${PrivateSubnetB}
-          - !Ref PrivateSubnetA
+    Value: !Sub ${PrivateSubnetA},${PrivateSubnetB},${PrivateSubnetC}
