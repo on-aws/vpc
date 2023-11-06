@@ -226,41 +226,11 @@ Resources:
       Roles:
         - !Ref InstanceRole
 
-  Fn::ForEach::Instance:
-    - Letter
-    - [ A, B, C ]
-    - NatInstanceSpotFleet${Letter}:
-        Type: AWS::EC2::SpotFleet
-        DependsOn: !Sub PrivateRouteTable${Letter}
-        Properties:
-          SpotFleetRequestConfigData:
-            IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role
-            SpotPrice: !FindInMap [ Configuration, Spot, MaxPrice ]
-            TargetCapacity: 1
-            LaunchTemplateConfigs:
-              - LaunchTemplateSpecification:
-                  LaunchTemplateId: !Ref LaunchTemplate
-                  Version: !GetAtt LaunchTemplate.LatestVersionNumber
-                Overrides:
-                  - InstanceType: t3a.nano
-                    SubnetId: !Ref
-                      Fn::Sub: PublicSubnet${Letter}
-              - LaunchTemplateSpecification:
-                  LaunchTemplateId: !Ref LaunchTemplate
-                  Version: !GetAtt LaunchTemplate.LatestVersionNumber
-                Overrides:
-                  - InstanceType: t3.nano
-                    SubnetId: !Ref
-                      Fn::Sub: PublicSubnet${Letter}
-
-  UserDataHandle:
-    Type: AWS::CloudFormation::WaitConditionHandle
-
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateData:
-        ImageId: !FindInMap [Configuration, !Ref AWS::Region, Ami]
+        ImageId: !FindInMap [ Configuration, !Ref AWS::Region, Ami ]
         IamInstanceProfile:
           Arn: !GetAtt InstanceProfile.Arn
         NetworkInterfaces:
@@ -362,6 +332,44 @@ Resources:
                     fi
                   fi
                 fi
+
+  Fn::ForEach::Instance:
+    - Letter
+    - [ A, B, C ]
+    - NatInstanceSpotFleet${Letter}:
+        Type: AWS::EC2::EC2Fleet
+        DependsOn: !Sub PrivateRouteTable${Letter}
+        Properties:
+          ExcessCapacityTerminationPolicy: termination
+          LaunchTemplateConfigs:
+            - LaunchTemplateSpecification:
+                LaunchTemplateId: !Ref LaunchTemplate
+                Version: !GetAtt LaunchTemplate.LatestVersionNumber
+              Overrides:
+                - InstanceType: t3a.nano
+                  SubnetId: !Ref
+                    Fn::Sub: PublicSubnet${Letter}
+            - LaunchTemplateSpecification:
+                LaunchTemplateId: !Ref LaunchTemplate
+                Version: !GetAtt LaunchTemplate.LatestVersionNumber
+              Overrides:
+                - InstanceType: t3.nano
+                  SubnetId: !Ref
+                    Fn::Sub: PublicSubnet${Letter}
+          ReplaceUnhealthyInstances: true
+          SpotOptions:
+            AllocationStrategy: capacityOptimized
+            MaintenanceStrategies:
+              CapacityRebalance:
+                ReplacementStrategy: launch-before-terminate
+                TerminationDelay: 120
+          TargetCapacitySpecification:
+            DefaultTargetCapacityType: spot
+            SpotTargetCapacity: 1
+            TotalTargetCapacity: 1
+
+  UserDataHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
 
   WaitUserData:
     Type: AWS::CloudFormation::WaitCondition
