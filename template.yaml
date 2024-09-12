@@ -4,13 +4,13 @@ Description: VPC for On-AWS deployment.
 Mappings:
   Configuration:
     us-east-1:
-      Ami: ami-0822796fd7b3ba710
+      Ami: ami-024cf76afbc833688
     us-west-2:
-      Ami: ami-0889d9089a8b74971
+      Ami: ami-0218a6903ac31c61f
     ca-central-1:
-      Ami: ami-0f1779932de794f63
+      Ami: ami-0c863e000bf13d94b
     eu-west-1:
-      Ami: ami-097ef3ce5c40814f2
+      Ami: ami-0137cee1a6fb4f763
     Spot:
       MaxPrice: 0.003
     VPC:
