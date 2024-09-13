@@ -14,19 +14,16 @@ Mappings:
     Spot:
       MaxPrice: 0.003
     VPC:
-      CidrBlock: 10.192.0.0/16
+      CidrBlock: 10.192.0.0/18
     PublicSubnet:
       A: 10.192.0.0/20
       B: 10.192.16.0/20
-      C: 10.192.32.0/20
     PrivateSubnet:
-      A: 10.192.48.0/20
-      B: 10.192.64.0/20
-      C: 10.192.80.0/20
+      A: 10.192.32.0/20
+      B: 10.192.48.0/20
     AZ:
       A: 0
       B: 1
-      C: 2
     Logs:
       RetentionInDays: 30
 
@@ -106,7 +103,7 @@ Resources:
 
   Fn::ForEach::Subnet:
     - Letter
-    - [ A, B, C ]
+    - [ A, B ]
     - PublicSubnet${Letter}:
         Type: AWS::EC2::Subnet
         Properties:
@@ -117,7 +114,7 @@ Resources:
           CidrBlock: !FindInMap [Configuration, PublicSubnet, !Ref Letter]
           Tags:
             - Key: Name
-              Value: PublicSubnet${Letter}
+              Value: !Sub PublicSubnet${Letter}
 
       PublicSubnet${Letter}RouteTableAssociation:
         Type: AWS::EC2::SubnetRouteTableAssociation
@@ -133,7 +130,7 @@ Resources:
           VpcId: !Ref VPC
           Tags:
             - Key: Name
-              Value: Private${Letter}
+              Value: !Sub Private${Letter}
 
       PrivateSubnet${Letter}:
         Type: AWS::EC2::Subnet
@@ -145,7 +142,7 @@ Resources:
           CidrBlock: !FindInMap [ Configuration, PrivateSubnet, !Ref Letter ]
           Tags:
             - Key: Name
-              Value: PrivateSubnet${Letter}
+              Value: !Sub PrivateSubnet${Letter}
 
       PrivateSubnet${Letter}RouteTableAssociation:
         Type: AWS::EC2::SubnetRouteTableAssociation
@@ -178,10 +175,6 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: !FindInMap [ Configuration, PrivateSubnet, B ]
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: !FindInMap [ Configuration, PrivateSubnet, C ]
       Tags:
         - Key: Name
           Value: NAT
@@ -217,7 +210,6 @@ Resources:
                 Resource:
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableA}
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableB}
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:route-table/${PrivateRouteTableC}
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -308,34 +300,10 @@ Resources:
                     fi
                   fi
                 fi
-            04_replace_route_in_table_c:
-              command: !Sub |
-                if [[ $az == '${PrivateSubnetC.AvailabilityZone}' ]]
-                then
-                  aws ec2 create-route --region ${AWS::Region} \
-                    --route-table-id ${PrivateRouteTableC} \
-                    --instance-id $instance \
-                    --destination-cidr-block 0.0.0.0/0
-                  if [ $? -eq 0 ]
-                  then
-                    echo 'OK (route created)'
-                  else
-                    aws ec2 replace-route --region ${AWS::Region} \
-                      --route-table-id ${PrivateRouteTableC} \
-                      --instance-id $instance \
-                      --destination-cidr-block 0.0.0.0/0
-                    if [ $? -eq 0 ]
-                    then
-                      echo 'OK (route replaced)'
-                    else
-                      echo 'FAIL'
-                    fi
-                  fi
-                fi
 
   Fn::ForEach::Instance:
     - Letter
-    - [ A, B, C ]
+    - [ A, B ]
     - NatInstanceSpotFleet${Letter}:
         Type: AWS::EC2::EC2Fleet
         DependsOn: !Sub PrivateRouteTable${Letter}
@@ -377,7 +345,7 @@ Resources:
     Properties:
       Handle: !Ref UserDataHandle
       Timeout: 600
-      Count: 3
+      Count: 2
 
 Outputs:
   VPC:
@@ -387,7 +355,7 @@ Outputs:
     Value: !Ref NatSecurityGroup
 
   PublicSubnets:
-    Value: !Sub ${PublicSubnetA},${PublicSubnetB},${PublicSubnetC}
+    Value: !Sub ${PublicSubnetA},${PublicSubnetB}
 
   PrivateSubnets:
-    Value: !Sub ${PrivateSubnetA},${PrivateSubnetB},${PrivateSubnetC}
+    Value: !Sub ${PrivateSubnetA},${PrivateSubnetB}
